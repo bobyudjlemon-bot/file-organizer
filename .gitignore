@@ -7,3 +7,4 @@ outputs/
 local-rules/
 *.egg-info/
 .env
+.ocr/

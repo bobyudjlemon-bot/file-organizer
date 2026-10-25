@@ -52,9 +52,16 @@ def component(value):
     return value
 
 
-def extract(path):
+def extract(path, ocr=False):
     """Bounded text extraction. Never execute macros or unpack user archives."""
     ext = path.suffix.lower()
+    if ocr:
+        from .ocr import IMAGE_EXTENSIONS, extract_ocr
+        if ext in IMAGE_EXTENSIONS or ext == '.pdf':
+            text = extract_ocr(path)
+            if len(text) > LIMIT:
+                raise ValueError('OCR文本超过20万字符')
+            return text
     if path.stat().st_size > 30 * 1024 * 1024:
         raise ValueError('超过30MB，跳过内容提取；仍按名称/类型/日期整理')
     if ext in {'.docx', '.xlsx', '.xlsm', '.pptx'}:
@@ -120,8 +127,10 @@ def extract(path):
 
 
 def validate_rules(rules):
-    if set(rules) - {'group_by', 'rules', 'rename', 'timezone'}:
+    if set(rules) - {'group_by', 'rules', 'rename', 'timezone', 'ocr'}:
         raise ValueError('未知配置字段')
+    if 'ocr' in rules and not isinstance(rules['ocr'], bool):
+        raise ValueError('ocr必须是true或false')
     groups = rules.get('group_by', ['category'])
     if not isinstance(groups, list) or any(x not in {'category', 'type', 'year', 'month'} for x in groups):
         raise ValueError('group_by仅允许category/type/year/month')
@@ -229,7 +238,9 @@ def preview(source, output, rules):
                 text = ''
                 if any('content_contains' in rule for rule in rules.get('rules', [])):
                     try:
-                        text = extract(path)
+                        text = extract(path, ocr=rules.get('ocr', False))
+                        if rules.get('ocr', False):
+                            row['warning'] = '已启用OCR辅助内容分类；机器识别可能出错，请核对预览'
                     except Exception as exc:
                         row['warning'] = str(exc)
                 for rule in rules.get('rules', []):
@@ -342,6 +353,10 @@ def main():
     unpack = sub.add_parser('import-zip', help='安全导入作为输入容器的ZIP到新目录')
     unpack.add_argument('archive')
     unpack.add_argument('--output', required=True)
+    ocr_pdf = sub.add_parser('ocr-pdf', help='确认后生成可搜索PDF副本，保留原件')
+    ocr_pdf.add_argument('source')
+    ocr_pdf.add_argument('--output', required=True)
+    ocr_pdf.add_argument('--confirm', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'preview':
@@ -350,6 +365,9 @@ def main():
             result = dict(files=len(plan['files']), duplicate_groups=len(plan['duplicates']), failed=len(plan['errors']), content_warnings=sum(bool(r['warning']) for r in plan['files']), output=args.output)
         elif args.command == 'apply':
             result = apply(args.plan, args.output, args.confirm)
+        elif args.command == 'ocr-pdf':
+            from .ocr import searchable_pdf
+            result = searchable_pdf(args.source, args.output, args.confirm)
         else:
             result = import_zip(args.archive, args.output)
         print(json.dumps(result, ensure_ascii=False))

@@ -1,0 +1,8 @@
+{
+  "ocr": true,
+  "group_by": ["category"],
+  "rules": [
+    {"category": "合同", "content_contains": ["合同", "合約", "contract"]},
+    {"category": "发票", "content_contains": ["发票", "發票", "invoice"]}
+  ]
+}

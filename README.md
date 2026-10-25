@@ -19,11 +19,12 @@
 | --- | --- |
 | Word、PDF、Excel、PPT、图片、压缩包及其他文件 | 按扩展名识别类型；按名称、修改日期分类；复制、改名、查重、清单、ZIP |
 | DOCX | 读取段落和表格文本，按关键词分类 |
-| PDF | 读取文本型 PDF；不读取加密 PDF，不自动 OCR |
+| PDF | 读取文本型 PDF；开启OCR可识别无文本页面；不读取加密PDF |
 | XLSX / XLSM / XLS / CSV | 读取表格内容；不运行宏，公式使用已有缓存值 |
 | PPTX | 读取文本框文字；图表、嵌入对象和图片文字不保证提取 |
 | TXT / MD / JSON / LOG | UTF-8 或 GB18030 文本关键词分类 |
-| 图片、扫描 PDF、DOC、PPT、压缩包内容 | 不进行 OCR/旧格式转换/内部内容分类；记录提示并按其他条件整理 |
+| PNG/JPEG/BMP/TIFF/WebP、扫描 PDF | 可开启本地中英文OCR，识别文字后按关键词分类 |
+| DOC、PPT、压缩包内容，HEIC/SVG等 | 暂不进行旧格式转换、内部内容分类或OCR；记录提示并按其他条件整理 |
 
 内容分类是可解释的关键词规则，不是自动语义理解。多项规则按顺序匹配第一项；同一规则中的不同条件同时满足，关键词列表内任意一个命中即可。未匹配文件按类型分类。大小超过30MB、Office解压内容超过100MB、PDF超过100页或文本超过20万字符会跳过内容读取并记录原因。大小限制不影响普通复制和哈希查重。
 
@@ -72,6 +73,44 @@ ZIP 输入导入最多10000项、总解压2GB、单文件512MB；拒绝路径穿
 - 仓库级 AGENTS.md：让 Codex 始终按中文、预览优先、保护原件的规则工作。
 - 专用 `.agents/skills/organize-files/SKILL.md`：把自然语言整理需求转成可复用操作流程。
 - 锁定版本的 Python 依赖、一键安装和测试脚本、自动化回归测试、GitHub Actions 测试配置。
-- 无需购买额外插件或提供 API 密钥；无需你手动安装技能。未来需要图片 OCR 或旧版 Office 内容转换时，可单独扩展并测试。
+- 无需购买额外插件或提供 API 密钥；无需你手动安装技能。已配置本地OCR扩展；旧版 Office 内容转换仍可后续按需扩展。
 
 云环境配置的保存不等于发布；首次设置后，在环境设置中查看并保存配置，然后发布环境供以后任务复用。
+
+
+## 新增：中文图片和扫描件识别
+
+已经集成 [Tesseract](https://github.com/tesseract-ocr/tesseract)、[OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF)、[pytesseract](https://github.com/madmaze/pytesseract) 和 [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)，以及本项目专用的 `document-ocr` 技能。它是为当前安全流程编写的技能，并非直接安装的 Anthropic 技能包。PaddleOCR、Docling、MarkItDown 暂未安装，避免功能重叠。
+
+直接对 Codex 说：
+
+> 请识别这些图片和扫描PDF里的文字，按合同、发票分类，先给我预览。识别不清楚的列出来。
+
+或者：
+
+> 我想让这份扫描PDF可以搜索文字。请先让我核对识别结果，确认后另存一份，保留原件。
+
+- 简体中文、繁体中文、英文语言包已配置，识别在本地执行，不调用付费API或外部识别服务。
+- 内容分类需要规则 `"ocr": true`；默认关闭。示例见 `examples/ocr-rules.json`。
+- OCR可能出错，尤其是手写、模糊、旋转、印章和复杂表格。金额、日期和编号请人工核对。
+- OCR模式限单文件30MB、PDF20页、位图2500万像素；单次识别45秒超时，可搜索PDF任务300秒超时。超限记录原因，不静默丢弃。
+- 不支持加密PDF、HEIC/SVG、动画和多帧图片的OCR。已有文本的PDF页面不会再次识别其中图片，带文字页眉的扫描正文可能需要后续单独处理。
+- 分类预览不会生成OCR替代文件；apply复制的仍是原始字节。可搜索PDF单独生成 `searchable.pdf`，同时记录原件和副本哈希、执行日志及失败原因。
+
+代理操作示例：
+
+```bash
+.venv/bin/python -m file_organizer preview inbox/batch-001 --output outputs/batch-003-preview --rules examples/ocr-rules.json
+# 用户确认生成可搜索PDF副本之后
+.venv/bin/python -m file_organizer ocr-pdf inbox/batch-001/扫描件.pdf --output outputs/batch-003-ocr --confirm
+```
+
+新机器的系统依赖（当前云环境已有Tesseract和字体）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y tesseract-ocr fonts-noto-cjk
+bash scripts/setup.sh
+```
+
+安装脚本自动获取固定版本的语言包并校验SHA-256，保存在不提交Git的 `.ocr/` 中；重复运行会验证并复用模型。模型来源为 [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast)，版本与校验值记录在 `scripts/setup_ocr.py`，依赖许可证以各上游项目为准。运行不需要联网，初次安装依赖和语言包需要网络。
