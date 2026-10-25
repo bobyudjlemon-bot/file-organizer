@@ -1,0 +1,9 @@
+{
+  "timezone": "Asia/Shanghai",
+  "group_by": ["category", "year", "month"],
+  "rename": "{date}_{category}_{index}_{stem}",
+  "rules": [
+    {"category": "合同", "filename_contains": ["合同", "协议"]},
+    {"category": "财务", "content_contains": ["发票", "报销", "付款"]}
+  ]
+}

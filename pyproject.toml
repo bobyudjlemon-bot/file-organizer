@@ -1,0 +1,9 @@
+[project]
+name = "safe-file-organizer"
+version = "0.1.0"
+description = "预览优先、保留原件的中文文件整理工具"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
